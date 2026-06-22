@@ -38,6 +38,17 @@ void app_main()
 	printf(" ");
 	printf(__DATE__);
 	printf("\r\n");
+    // Configurar GPIO4 y GPIO17 como entrada con pull-up interno desactivado
+    // (usa solo el pull-up externo de 2k2)
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << GPIO_NUM_4) | (1ULL << GPIO_NUM_17),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
  	int g1 = gpio_get_level(GPIO_NUM_4);
     int g2 = gpio_get_level(GPIO_NUM_17);
 	node_role_t role = ROLE_SINK_LINE;
@@ -51,7 +62,7 @@ void app_main()
         role = ROLE_SINK_AMP;
     }
 
-    ESP_LOGI(TAG, "GPIO1=%d  GPIO2=%d  →  role = %s", g1, g2,
+    ESP_LOGI(TAG, "GPIO4=%d  GPIO17=%d  →  role = %s", g1, g2,
              (role == ROLE_SINK_LINE) ? "SINK_LINE" :
              (role == ROLE_SINK_AMP)  ? "SINK_AMP" :
              (role == ROLE_SOURCE_LINE) ? "SOURCE_LINE" : "SOURCE_MIC");
