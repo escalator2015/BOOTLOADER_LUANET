@@ -1,0 +1,27 @@
+{
+  "idf.currentSetup": "/home/aa/.espressif/v5.5.4/esp-idf",
+  "idf.customExtraVars": {
+    "OPENOCD_SCRIPTS": "/home/aa/.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts",
+    "ESP_ROM_ELF_DIR": "/home/aa/.espressif/tools/esp-rom-elfs/20240305/",
+    "IDF_TARGET": "esp32s3"
+  },
+  "clangd.path": "/home/aa/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=/home/aa/vs-workspace/BOOTLOADER_dispnovo/build"
+  ],
+  "idf.pythonBinPath": "/home/aa/.espressif/python_env/idf5.5_py3.12_env/bin/python",
+  "idf.cmakeCompilerArgs": [
+    "-G",
+    "Ninja"
+  ],
+  "cmake.environment": {
+    "IDF_PATH": "/home/aa/.espressif/v5.5.4/esp-idf"
+  },
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
+  "idf.port": "/dev/ttyUSB0",
+  "idf.flashType": "UART"
+}

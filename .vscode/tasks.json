@@ -1,0 +1,35 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build ESP-IDF (idf.py)",
+            "type": "shell",
+            "command": "bash -c 'export IDF_PATH=/home/aa/.espressif/v5.5.4/esp-idf && . $IDF_PATH/export.sh && cd ${workspaceFolder} && idf.py build'",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$espidf"
+            ],
+            "detail": "Compila el proyecto con idf.py usando ESP-IDF 5.5.4 (sin ADF)"
+        },
+        {
+            "label": "CMake Configure (ESP-IDF)",
+            "type": "shell",
+            "command": "bash -c 'export IDF_PATH=/home/aa/.espressif/v5.5.4/esp-idf && . $IDF_PATH/export.sh && cd ${workspaceFolder} && cmake -B build -S .'",
+            "problemMatcher": [],
+            "detail": "Reconfigura CMake con ESP-IDF 5.5.4 (sin ADF)"
+        },
+        {
+            "label": "Clean Build (ESP-IDF)",
+            "type": "shell",
+            "command": "bash -c 'export IDF_PATH=/home/aa/.espressif/v5.5.4/esp-idf && . $IDF_PATH/export.sh && cd ${workspaceFolder} && idf.py fullclean && idf.py build'",
+            "group": "build",
+            "problemMatcher": [
+                "$espidf"
+            ],
+            "detail": "Limpia y reconstruye todo el proyecto desde cero (ESP-IDF 5.5.4)"
+        }
+    ]
+}
