@@ -75,6 +75,30 @@
         .status-log { margin-top: 16px; padding: 12px 14px; background: #0d1117; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); max-height: 80px; overflow-y: auto; display: none; }
         .status-log.active { display: block; }
         .status-log .ok { color: var(--success); } .status-log .err { color: var(--danger); } .status-log .info { color: var(--accent); }
+        /* ── Modal overlay ── */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 999;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-box {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 36px 32px; max-width: 400px;
+            width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+            animation: modalIn 0.3s ease;
+        }
+        @keyframes modalIn { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .modal-icon { font-size: 3rem; margin-bottom: 12px; display: block; }
+        .modal-title { font-size: 1.2rem; font-weight: 600; margin-bottom: 8px; }
+        .modal-desc { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.6; }
+        .modal-btn {
+            display: inline-block; padding: 10px 32px;
+            background: var(--success); color: #fff; border: none;
+            border-radius: var(--radius-sm); font-size: 0.95rem; font-weight: 600;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .modal-btn:hover { background: #2ea043; }
         @media (max-width: 480px) { body { padding: 12px; } .card { padding: 20px 16px; } .btn-group { flex-direction: column; } }
     </style>
 </head>
@@ -104,12 +128,26 @@
         <div class="status-log" id="log"></div>
     </div>
 </div>
+
+<!-- ── Success modal ── -->
+<div class="modal-overlay" id="successModal">
+    <div class="modal-box">
+        <span class="modal-icon">✅</span>
+        <div class="modal-title">OTA Update Successful</div>
+        <div class="modal-desc">
+            The new firmware has been flashed successfully.<br>
+            The device will reboot momentarily to apply the update.
+        </div>
+        <button class="modal-btn" id="closeBtn">OK, Close Page</button>
+    </div>
+</div>
 <script>
 (function(){
     var $ = function(id){return document.getElementById(id);};
     var dz=$("dropZone"), dl=$("dropLabel"), fi=$("fileInfo"), inp=$("fileInput");
     var ub=$("uploadBtn"), cb=$("cancelBtn"), ps=$("progSec"), st=$("statusText");
     var pt=$("pctText"), pb=$("progBar"), lg=$("log"), fw=$("fwVer");
+    var mo=$("successModal"), cl=$("closeBtn");
     var file=null, uploading=false;
 
     function l(m,t){var d=document.createElement("div");d.textContent="> "+m;if(t)d.className=t;lg.appendChild(d);lg.scrollTop=lg.scrollHeight;}
@@ -140,9 +178,19 @@
         var fd=new FormData();fd.set("file",file,file.name);
         var x=new XMLHttpRequest();x.open("POST","/update",true);x.responseType="blob";
         x.upload.onprogress=function(e){if(e.lengthComputable){var p=Math.round(e.loaded/e.total*100);sp(p,"Uploading... "+p+"%");}};
-        x.onloadend=function(){if(x.readyState==4){if(x.status==200){sp(100,"Firmware flashed. Rebooting...","success");l("OTA complete. Rebooting...","ok");}else{sp(100,"Update failed","error");l("HTTP "+x.status,"err");}}uploading=false;cb.disabled=false;setTimeout(function(){ub.disabled=true;},500);};
+        x.onloadend=function(){if(x.readyState==4){if(x.status==200){sp(100,"Firmware flashed. Rebooting...","success");l("OTA complete. Rebooting...","ok");mo.classList.add("active");}else{sp(100,"Update failed","error");l("HTTP "+x.status,"err");}}uploading=false;cb.disabled=false;setTimeout(function(){ub.disabled=true;},500);};
         x.onerror=function(){sp(0,"Connection error","error");l("Network error.","err");uploading=false;cb.disabled=false;};
         x.send(fd);
+    };
+
+    /* Close modal → tell device to reboot, then close page */
+    cl.onclick=function(){
+        cl.disabled=true;
+        cl.textContent="Rebooting...";
+        /* Send /goapp to trigger reboot */
+        fetch("/goapp",{method:"POST",body:"goapp"}).catch(function(){});
+        /* Give the request a moment, then close tab */
+        setTimeout(function(){mo.classList.remove("active");window.close();},500);
     };
 
     function poll(){

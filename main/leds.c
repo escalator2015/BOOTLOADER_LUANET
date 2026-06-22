@@ -1,0 +1,58 @@
+#include "leds.h"
+
+#include "freertos/FreeRTOS.h"
+#include "driver/gpio.h"
+#include "driver/rmt_tx.h"
+#include "driver/rmt_encoder.h"
+#include "esp_log.h"
+#include "esp_err.h"
+
+// ---------------------------------------------------------------------------
+// RMT — resolución 10 MHz (100 ns/tick)
+// WS2812B:  T0H=400 ns, T0L=800 ns  |  T1H=800 ns, T1L=400 ns
+// ---------------------------------------------------------------------------
+#define RMT_RESOLUTION_HZ   10000000U   // 10 MHz
+
+static const char *TAG = "leds";
+
+static rmt_channel_handle_t s_rmt_chan  = NULL;
+static rmt_encoder_handle_t s_bytes_enc = NULL;
+extern gpio_num_t rgbpin;
+// ---------------------------------------------------------------------------
+
+void leds_init(void)
+{
+    // --- WS2812 RGB on GPIO via RMT ---
+    rmt_tx_channel_config_t tx_cfg = {
+        .gpio_num          = rgbpin,
+        .clk_src           = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz     = RMT_RESOLUTION_HZ,
+        .mem_block_symbols = 64,
+        .trans_queue_depth = 4,
+    };
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_cfg, &s_rmt_chan));
+
+    rmt_bytes_encoder_config_t enc_cfg = {
+        // Bit 0: 1→400 ns high, 0→800 ns low
+        .bit0 = { .duration0 = 4, .level0 = 1, .duration1 = 8, .level1 = 0 },
+        // Bit 1: 1→800 ns high, 0→400 ns low
+        .bit1 = { .duration0 = 8, .level0 = 1, .duration1 = 4, .level1 = 0 },
+        .flags.msb_first = 1,   // WS2812 sends MSB first
+    };
+    ESP_ERROR_CHECK(rmt_new_bytes_encoder(&enc_cfg, &s_bytes_enc));
+    ESP_ERROR_CHECK(rmt_enable(s_rmt_chan));
+
+    ESP_LOGI(TAG, "LED initialized — GPIO%d (WS2812)",
+             rgbpin);
+}
+//---------------------------------------------------------------------------
+void led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
+{
+    // WS2812 espera orden GRB
+    uint8_t grb[3] = { g, r, b };
+    rmt_transmit_config_t tx_conf = { .loop_count = 0 };
+    ESP_ERROR_CHECK(rmt_transmit(s_rmt_chan, s_bytes_enc, grb, sizeof(grb), &tx_conf));
+    // Esperar a que termine (el canal queda en bajo ≥50 µs → pulso de reset)
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(s_rmt_chan, portMAX_DELAY));
+}
+//---------------------------------------------------------------------------

@@ -2,11 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "sys/param.h"
 #include "esp_http_server.h"
 #include "esp_ota_ops.h"
 #include "freertos/event_groups.h"
 #include "OTAServer.h"
+#include "leds.h"
 
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
@@ -22,7 +24,6 @@ EventGroupHandle_t reboot_event_group;
 const int REBOOT_BIT = BIT0;
 
 static const char *TAG = "OTA_STREAM";
-
 //----------------------------------------------------------------------------------
 void systemRebootTask(void * parameter)
 {
@@ -80,12 +81,7 @@ esp_err_t OTA_update_status_handler(httpd_req_t *req)
 	httpd_resp_set_type(req, "application/json");
 	httpd_resp_send(req, ledJSON, strlen(ledJSON));
 	
-	if (flash_status == 1)
-	{
-		// We cannot directly call reboot here because we need the 
-		// browser to get the ack back. 
-		xEventGroupSetBits(reboot_event_group, REBOOT_BIT);		
-	}
+	/* Reboot is now triggered ONLY via POST /goapp (user closes modal) */
 
 	return ESP_OK;
 }
@@ -114,68 +110,135 @@ esp_err_t OTA_update_post_handler(httpd_req_t *req)
 
     flash_status = -1;
 
+    /* Subscribe this task (httpd) to the Task Watchdog so esp_task_wdt_reset() works */
+    esp_task_wdt_add(NULL);
+
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
     esp_ota_handle_t ota_handle;
 
     esp_err_t err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN, &ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed (%s)", esp_err_to_name(err));
+        led_rgb_set(32, 0, 0);      /* red: error */
+        esp_task_wdt_delete(NULL);
         return ESP_FAIL;
     }
     ESP_LOGI(TAG, "OTA started, partition at 0x%lx", (unsigned long)update_partition->address);
+    led_rgb_set(0, 0, 32);          /* blue: OTA in progress */
+
+    /* Feed watchdog and limit progress prints to every 3% */
+    int last_reported_pct = -10;
+    int stall_count = 0;                /* consecutive HTTPD_SOCK_ERR_TIMEOUT */
 
     do {
+        /* Reset watchdog BEFORE each recv (which may block for several seconds) */
+        esp_task_wdt_reset();
+
         recv_len = httpd_req_recv(req, ota_buff, MIN(content_length, sizeof(ota_buff)));
         if (recv_len < 0) {
-            if (recv_len == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            if (recv_len == HTTPD_SOCK_ERR_TIMEOUT) {
+                /* Each timeout ~5s (HTTPD default). Abort if stalled >25s */
+                stall_count++;
+                if (stall_count >= 5) {
+                    ESP_LOGE(TAG, "OTA stalled — no data for ~%ds, aborting", stall_count * 5);
+                    led_rgb_set(32, 0, 0);      /* red: stall */
+                    esp_ota_abort(ota_handle);
+                    esp_task_wdt_delete(NULL);
+                    return ESP_FAIL;
+                }
+                esp_task_wdt_reset();
+                continue;
+            }
             ESP_LOGE(TAG, "recv error %d", recv_len);
+            led_rgb_set(32, 0, 0);      /* red: recv error */
             esp_ota_abort(ota_handle);
+            esp_task_wdt_delete(NULL);
             return ESP_FAIL;
         }
+
+        /* Connection closed by peer — this is the normal end of data */
+        if (recv_len == 0) {
+            if (total_written == 0) {
+                ESP_LOGE(TAG, "Connection closed before any data received");
+                led_rgb_set(32, 0, 0);      /* red: no data */
+                esp_ota_abort(ota_handle);
+                esp_task_wdt_delete(NULL);
+                return ESP_FAIL;
+            }
+            /* Graceful end: client finished sending multipart data */
+            ESP_LOGI(TAG, "Data complete, %d bytes received", total_written);
+            break;
+        }
+
+        /* Got data — reset stall counter */
+        stall_count = 0;
 
         if (!is_req_body_started) {
             is_req_body_started = true;
             char *body_start = strstr(ota_buff, "\r\n\r\n");
             if (!body_start) {
                 ESP_LOGE(TAG, "Malformed multipart header");
+                led_rgb_set(32, 0, 0);      /* red: header error */
                 esp_ota_abort(ota_handle);
+                esp_task_wdt_delete(NULL);
                 return ESP_FAIL;
             }
             body_start += 4;
             int body_len = recv_len - (body_start - ota_buff);
             err = esp_ota_write(ota_handle, body_start, body_len);
-            if (err != ESP_OK) { esp_ota_abort(ota_handle); return ESP_FAIL; }
+            if (err != ESP_OK) { led_rgb_set(32, 0, 0); esp_ota_abort(ota_handle); esp_task_wdt_delete(NULL); return ESP_FAIL; }
             total_written += body_len;
             content_received = body_len;
         } else {
             err = esp_ota_write(ota_handle, ota_buff, recv_len);
-            if (err != ESP_OK) { esp_ota_abort(ota_handle); return ESP_FAIL; }
+            if (err != ESP_OK) { led_rgb_set(32, 0, 0); esp_ota_abort(ota_handle); esp_task_wdt_delete(NULL); return ESP_FAIL; }
             total_written += recv_len;
             content_received += recv_len;
         }
 
+        /* Only print progress every ~3% to avoid UART blocking */
         int pct = (content_received * 100) / content_length;
-        printf("OTA: %d/%d (%d%%)\r", content_received, content_length, pct);
+        if (pct >= last_reported_pct + 3) {
+            ESP_LOGI(TAG, "OTA: %d/%d (%d%%)", content_received, content_length, pct);
+            last_reported_pct = pct;
+        }
 
     } while (content_received < content_length);
 
-    printf("\n");
+    ESP_LOGI(TAG, "OTA transfer complete");
 
+    /* esp_ota_end() verifies SHA-256 — this can take several seconds */
+    esp_task_wdt_reset();
     err = esp_ota_end(ota_handle);
+    esp_task_wdt_reset();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_end failed (%s)", esp_err_to_name(err));
+        led_rgb_set(32, 0, 0);      /* red: SHA-256 failed */
+        esp_task_wdt_delete(NULL);
         return ESP_FAIL;
     }
 
     err = esp_ota_set_boot_partition(update_partition);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_set_boot_partition failed (%s)", esp_err_to_name(err));
+        led_rgb_set(32, 0, 0);      /* red: boot partition failed */
+        esp_task_wdt_delete(NULL);
         return ESP_FAIL;
     }
 
     flash_status = 1;
-    ESP_LOGI(TAG, "OTA success! %d bytes written. Rebooting...", total_written);
-    xEventGroupSetBits(reboot_event_group, REBOOT_BIT);
+    led_rgb_set(0, 32, 0);          /* green: OTA success */
+    ESP_LOGI(TAG, "OTA success! %d bytes written. Waiting for user confirm...", total_written);
+
+    /* Unsubscribe from watchdog — transfer is done */
+    esp_task_wdt_delete(NULL);
+
+    /* Send HTTP response so the browser's XHR gets onloadend and shows modal */
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_sendstr(req, "OK");
+
+    /* Do NOT reboot here. The client shows a modal and the user clicks
+       "OK Close Page" which calls POST /goapp to trigger the reboot. */
 
     return ESP_OK;
 }

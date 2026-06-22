@@ -1,9 +1,22 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "esp_log.h"
+#include "driver/gpio.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "OTAServer.h"
 #include "MyWiFi.h"
+#include "leds.h"
+
+static const char *TAG = "BOOT";
+
+gpio_num_t rgbpin;
+typedef enum {
+    ROLE_SINK_LINE  = 0,
+    ROLE_SINK_AMP  = 1,
+    ROLE_SOURCE_LINE = 2,
+    ROLE_SOURCE_MIC = 3,
+} node_role_t;
 
 //--------------------------------------------------------
 void app_main()
@@ -25,7 +38,42 @@ void app_main()
 	printf(" ");
 	printf(__DATE__);
 	printf("\r\n");
+ 	int g1 = gpio_get_level(GPIO_NUM_4);
+    int g2 = gpio_get_level(GPIO_NUM_17);
+	node_role_t role = ROLE_SINK_LINE;
+    if (g1 == 0 && g2 == 0) {
+        role = ROLE_SINK_LINE;
+    } else if (g1 == 1 && g2 == 0) {
+        role = ROLE_SOURCE_MIC;
+    } else if (g1 == 0 && g2 == 1) {
+        role = ROLE_SOURCE_LINE;
+    } else { // g1 == 1 && g2 == 1
+        role = ROLE_SINK_AMP;
+    }
 
+    ESP_LOGI(TAG, "GPIO1=%d  GPIO2=%d  →  role = %s", g1, g2,
+             (role == ROLE_SINK_LINE) ? "SINK_LINE" :
+             (role == ROLE_SINK_AMP)  ? "SINK_AMP" :
+             (role == ROLE_SOURCE_LINE) ? "SOURCE_LINE" : "SOURCE_MIC");
+
+	if (role == ROLE_SINK_LINE) {
+        rgbpin = GPIO_NUM_45;
+        ESP_LOGI(TAG, "Starting as SINK_LINE");
+       /// led_rgb_set(16, 0, 16);   // magenta
+    } else if (role == ROLE_SINK_AMP) {
+        // TAS5828 amplifier       
+        rgbpin = GPIO_NUM_4;
+        ESP_LOGI(TAG, "Starting as SINK_AMP (TAS5828)");
+        ///led_rgb_set(16, 0, 0);     // rojo
+    } else if (role == ROLE_SOURCE_LINE) {
+        rgbpin = GPIO_NUM_16;
+        ESP_LOGI(TAG, "Starting as SOURCE_LINE (Stream ID = 0)");	
+	}else { // ROLE_SOURCE_MIC
+        rgbpin = GPIO_NUM_16;
+        ESP_LOGI(TAG, "Starting as SOURCE_MIC (Stream ID = 0)");
+        ///led_rgb_set(0, 0, 16);    // azul
+    }
+    leds_init();
 	// Start as an AP
  	init_wifi_softap(&OTA_server);
 	while (1) {
