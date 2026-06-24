@@ -1,4 +1,5 @@
 {
+  "C_Cpp.intelliSenseEngine": "disabled",
   "idf.currentSetup": "/home/aa/.espressif/v5.5.4/esp-idf",
   "idf.customExtraVars": {
     "OPENOCD_SCRIPTS": "/home/aa/.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts",
@@ -9,7 +10,7 @@
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=/home/aa/vs-workspace/BOOTLOADER_dispnovo/build"
+    "--compile-commands-dir=/home/aa/vs-workspace/BOOTLOADER_LUANET/build"
   ],
   "idf.pythonBinPath": "/home/aa/.espressif/python_env/idf5.5_py3.12_env/bin/python",
   "idf.cmakeCompilerArgs": [
