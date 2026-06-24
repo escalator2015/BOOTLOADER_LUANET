@@ -110,6 +110,9 @@ esp_err_t OTA_update_post_handler(httpd_req_t *req)
 
     flash_status = -1;
 
+    /* Stop the orange startup blink — OTA has its own color signalling */
+    led_blink_stop();
+
     /* Subscribe this task (httpd) to the Task Watchdog so esp_task_wdt_reset() works */
     esp_task_wdt_add(NULL);
 

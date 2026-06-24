@@ -20,3 +20,13 @@ void led_rgb_set(uint8_t r, uint8_t g, uint8_t b);
  * @param on  1 para encender, 0 para apagar
  */
 void led_gpio_set(int on);
+
+/**
+ * @brief Inicia el parpadeo del LED RGB en color naranja (modo boot/discovery).
+ */
+void led_startup_blink(void);
+
+/**
+ * @brief Detiene el parpadeo del LED RGB y lo apaga.
+ */
+void led_blink_stop(void);

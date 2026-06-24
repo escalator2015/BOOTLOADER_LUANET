@@ -1,6 +1,7 @@
 #include "leds.h"
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/rmt_tx.h"
 #include "driver/rmt_encoder.h"
@@ -18,6 +19,11 @@ static const char *TAG = "leds";
 static rmt_channel_handle_t s_rmt_chan  = NULL;
 static rmt_encoder_handle_t s_bytes_enc = NULL;
 extern gpio_num_t rgbpin;
+
+// --- Blink control ---
+static TaskHandle_t s_blink_task = NULL;
+static bool s_blink_enabled = false;
+
 // ---------------------------------------------------------------------------
 
 void leds_init(void)
@@ -56,3 +62,34 @@ void led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
     ESP_ERROR_CHECK(rmt_tx_wait_all_done(s_rmt_chan, portMAX_DELAY));
 }
 //---------------------------------------------------------------------------
+static void blink_task_fn(void *pvParameter)
+{
+    (void)pvParameter;
+    /* Orange = R=32, G=8, B=0 */
+    const uint8_t orange_r = 32;
+    const uint8_t orange_g = 8;
+    const uint8_t orange_b = 0;
+
+    while (s_blink_enabled) {
+        led_rgb_set(orange_r, orange_g, orange_b);
+        vTaskDelay(250 / portTICK_PERIOD_MS);
+        led_rgb_set(0, 0, 0);
+        vTaskDelay(250 / portTICK_PERIOD_MS);
+    }
+    led_rgb_set(0, 0, 0);
+    vTaskDelete(NULL);
+}
+//---------------------------------------------------------------------------
+void led_startup_blink(void)
+{
+    if (s_blink_task != NULL) return;   /* already running */
+
+    s_blink_enabled = true;
+    xTaskCreate(blink_task_fn, "led_blink", 2048, NULL, 5, &s_blink_task);
+}
+//---------------------------------------------------------------------------
+void led_blink_stop(void)
+{
+    s_blink_enabled = false;
+    s_blink_task = NULL;
+}

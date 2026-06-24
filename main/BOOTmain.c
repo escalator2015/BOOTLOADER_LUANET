@@ -7,10 +7,11 @@
 #include "OTAServer.h"
 #include "MyWiFi.h"
 #include "leds.h"
+#include "ota_switch.h"
 
 static const char *TAG = "BOOT";
 
-gpio_num_t rgbpin;
+gpio_num_t rgbpin, sw1;
 typedef enum {
     ROLE_SINK_LINE  = 0,
     ROLE_SINK_AMP  = 1,
@@ -67,6 +68,8 @@ void app_main()
              (role == ROLE_SINK_AMP)  ? "SINK_AMP" :
              (role == ROLE_SOURCE_LINE) ? "SOURCE_LINE" : "SOURCE_MIC");
 
+    sw1 = GPIO_NUM_0; 
+
 	if (role == ROLE_SINK_LINE) {
         rgbpin = GPIO_NUM_45;
         ESP_LOGI(TAG, "Starting as SINK_LINE");
@@ -85,6 +88,8 @@ void app_main()
         ///led_rgb_set(0, 0, 16);    // azul
     }
     leds_init();
+    led_startup_blink();
+    ota_switch_start(sw1);
 	// Start as an AP
  	init_wifi_softap(&OTA_server);
 	while (1) {
