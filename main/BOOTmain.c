@@ -9,7 +9,7 @@
 #include "leds.h"
 #include "ota_switch.h"
 
-#define DEVBOARD
+///#define DEVBOARD
 
 static const char *TAG = "BOOT";
 
