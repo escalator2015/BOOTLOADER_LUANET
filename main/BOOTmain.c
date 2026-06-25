@@ -31,7 +31,7 @@ void app_main()
 		ret = nvs_flash_init();
 	}
 	ESP_ERROR_CHECK(ret);
-	
+	node_role_t role = ROLE_SINK_LINE;
     printf("\r\n***************************\r\n");
     printf("***   HYBRID BOOTLOADER  ***\r\n");
     printf("***************************\r\n");
@@ -54,7 +54,6 @@ void app_main()
     vTaskDelay(100 / portTICK_PERIOD_MS);
 	
 #ifndef DEVBOARD
-    node_role_t role;
     int g1 = gpio_get_level(GPIO_NUM_4);
     int g2 = gpio_get_level(GPIO_NUM_17);
     if (g1 == 0 && g2 == 0) {
@@ -66,7 +65,7 @@ void app_main()
     } else { // g1 == 1 && g2 == 1
         role = ROLE_SINK_AMP;
     }
-    else role = ROLE_SINK_LINE;
+
     ESP_LOGI(TAG, "GPIO4=%d  GPIO17=%d  →  role = %s", g1, g2,
              (role == ROLE_SINK_LINE) ? "SINK_LINE" :
              (role == ROLE_SINK_AMP)  ? "SINK_AMP" :
