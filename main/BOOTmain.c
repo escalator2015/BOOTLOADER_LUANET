@@ -9,6 +9,8 @@
 #include "leds.h"
 #include "ota_switch.h"
 
+#define DEVBOARD
+
 static const char *TAG = "BOOT";
 
 gpio_num_t rgbpin, sw1;
@@ -49,10 +51,12 @@ void app_main()
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
- 	int g1 = gpio_get_level(GPIO_NUM_4);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+	
+#ifndef DEVBOARD
+    node_role_t role;
+    int g1 = gpio_get_level(GPIO_NUM_4);
     int g2 = gpio_get_level(GPIO_NUM_17);
-	node_role_t role = ROLE_SINK_LINE;
     if (g1 == 0 && g2 == 0) {
         role = ROLE_SINK_LINE;
     } else if (g1 == 1 && g2 == 0) {
@@ -62,7 +66,7 @@ void app_main()
     } else { // g1 == 1 && g2 == 1
         role = ROLE_SINK_AMP;
     }
-
+    else role = ROLE_SINK_LINE;
     ESP_LOGI(TAG, "GPIO4=%d  GPIO17=%d  →  role = %s", g1, g2,
              (role == ROLE_SINK_LINE) ? "SINK_LINE" :
              (role == ROLE_SINK_AMP)  ? "SINK_AMP" :
@@ -87,6 +91,11 @@ void app_main()
         ESP_LOGI(TAG, "Starting as SOURCE_MIC (Stream ID = 0)");
         ///led_rgb_set(0, 0, 16);    // azul
     }
+#else
+    rgbpin = GPIO_NUM_48;
+    sw1 = GPIO_NUM_0; 
+    ESP_LOGI(TAG, "Starting as SINK_DEVBOARD");
+#endif
     leds_init();
     led_startup_blink();
     ota_switch_start(sw1);
