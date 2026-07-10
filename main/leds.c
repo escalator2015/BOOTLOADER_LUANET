@@ -2,6 +2,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "driver/gpio.h"
 #include "driver/rmt_tx.h"
 #include "driver/rmt_encoder.h"
@@ -22,12 +23,17 @@ extern gpio_num_t rgbpin;
 
 // --- Blink control ---
 static TaskHandle_t s_blink_task = NULL;
-static bool s_blink_enabled = false;
+static volatile bool s_blink_enabled = false;
+static SemaphoreHandle_t s_rmt_mutex = NULL;
 
 // ---------------------------------------------------------------------------
 
 void leds_init(void)
 {
+    // --- Crear mutex para acceso seguro al RMT ---
+    s_rmt_mutex = xSemaphoreCreateMutex();
+    assert(s_rmt_mutex != NULL);
+
     // --- WS2812 RGB on GPIO via RMT ---
     rmt_tx_channel_config_t tx_cfg = {
         .gpio_num          = rgbpin,
@@ -57,9 +63,20 @@ void led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
     // WS2812 espera orden GRB
     uint8_t grb[3] = { g, r, b };
     rmt_transmit_config_t tx_conf = { .loop_count = 0 };
-    ESP_ERROR_CHECK(rmt_transmit(s_rmt_chan, s_bytes_enc, grb, sizeof(grb), &tx_conf));
-    // Esperar a que termine (el canal queda en bajo ≥50 µs → pulso de reset)
-    ESP_ERROR_CHECK(rmt_tx_wait_all_done(s_rmt_chan, portMAX_DELAY));
+
+    if (s_rmt_mutex != NULL)
+        xSemaphoreTake(s_rmt_mutex, portMAX_DELAY);
+
+    esp_err_t err = rmt_transmit(s_rmt_chan, s_bytes_enc, grb, sizeof(grb), &tx_conf);
+    if (err == ESP_OK)
+        err = rmt_tx_wait_all_done(s_rmt_chan, portMAX_DELAY);
+
+    if (s_rmt_mutex != NULL)
+        xSemaphoreGive(s_rmt_mutex);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "led_rgb_set failed: %s", esp_err_to_name(err));
+    }
 }
 //---------------------------------------------------------------------------
 static void blink_task_fn(void *pvParameter)
@@ -72,11 +89,15 @@ static void blink_task_fn(void *pvParameter)
 
     while (s_blink_enabled) {
         led_rgb_set(orange_r, orange_g, orange_b);
+        if (!s_blink_enabled) break;
         vTaskDelay(250 / portTICK_PERIOD_MS);
         led_rgb_set(0, 0, 0);
+        if (!s_blink_enabled) break;
         vTaskDelay(250 / portTICK_PERIOD_MS);
     }
     led_rgb_set(0, 0, 0);
+    /* Clear handle before deleting so led_startup_blink can create again */
+    s_blink_task = NULL;
     vTaskDelete(NULL);
 }
 //---------------------------------------------------------------------------
@@ -85,11 +106,14 @@ void led_startup_blink(void)
     if (s_blink_task != NULL) return;   /* already running */
 
     s_blink_enabled = true;
-    xTaskCreate(blink_task_fn, "led_blink", 2048, NULL, 5, &s_blink_task);
+    xTaskCreate(blink_task_fn, "led_blink", 3072, NULL, 5, &s_blink_task);
 }
 //---------------------------------------------------------------------------
 void led_blink_stop(void)
 {
     s_blink_enabled = false;
-    s_blink_task = NULL;
+    /* Wait for the task to actually exit and clear s_blink_task */
+    while (s_blink_task != NULL) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }

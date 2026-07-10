@@ -127,7 +127,7 @@ esp_err_t OTA_update_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     ESP_LOGI(TAG, "OTA started, partition at 0x%lx", (unsigned long)update_partition->address);
-    led_rgb_set(0, 0, 32);          /* blue: OTA in progress */
+    led_rgb_set(32, 8, 0);          /* orange: OTA in progress */
 
     /* Feed watchdog and limit progress prints to every 3% */
     int last_reported_pct = -10;
