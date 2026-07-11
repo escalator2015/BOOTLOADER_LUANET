@@ -9,7 +9,7 @@
 #include "leds.h"
 #include "ota_switch.h"
 
-///#define DEVBOARD
+//#define DEVBOARD
 
 static const char *TAG = "BOOT";
 
@@ -93,6 +93,7 @@ void app_main()
 #else
     rgbpin = GPIO_NUM_48;
     sw1 = GPIO_NUM_0; 
+
     ESP_LOGI(TAG, "Starting as SINK_DEVBOARD");
 #endif
     leds_init();
